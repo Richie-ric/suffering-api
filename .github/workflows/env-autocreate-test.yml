@@ -1,0 +1,72 @@
+name: Environment auto-create test
+
+# Answers two questions without anyone creating an environment by hand.
+# This repo starts with zero environments, so anything that shows up under
+# Settings -> Environments after a run was created by the run itself.
+#
+#   Q1: does referencing an environment that does not exist create it?
+#       -> jobs `named-via-reusable` and `named-direct`
+#   Q2: is an empty environment value accepted, or does it error?
+#       -> job `empty-via-reusable`
+#
+# Run it from the Actions tab (Run workflow), then check
+# Settings -> Environments to see what appeared.
+
+on:
+    workflow_dispatch:
+
+jobs:
+    # Q1 via a reusable workflow, matching how the estata repos do it.
+    # Expect: job succeeds and an "AutoCreated-Reusable" environment appears.
+    named-via-reusable:
+        uses: ./.github/workflows/env-probe.yml
+        with:
+            environment: AutoCreated-Reusable
+            label: Q1 - named environment through a reusable workflow
+
+    # Q1 without the reusable indirection, environment set literally on the job.
+    # Expect: job succeeds and an "AutoCreated-Direct" environment appears.
+    named-direct:
+        runs-on: ubuntu-24.04
+        environment: AutoCreated-Direct
+        steps:
+            - name: Report
+              run: |
+                echo "Q1 - named environment set directly on the job"
+                echo "environment ... AutoCreated-Direct"
+                echo "This step running means the name was accepted without pre-creating it."
+
+    # Q2: the caller passes nothing, so the reusable workflow's default ('')
+    # is what lands in `environment:`.
+    # Expect success with no environment attached. If GitHub rejects an empty
+    # environment name instead, THIS is the job that fails - and that failure
+    # is the answer we are looking for.
+    empty-via-reusable:
+        uses: ./.github/workflows/env-probe.yml
+        with:
+            label: Q2 - empty environment value (input omitted)
+
+    # Lists the environments that exist once the jobs above have run.
+    # Best effort: if GITHUB_TOKEN lacks permission to read environments this
+    # step reports that instead of failing the run.
+    summary:
+        needs: [named-via-reusable, named-direct, empty-via-reusable]
+        if: always()
+        runs-on: ubuntu-24.04
+        permissions:
+            contents: read
+        steps:
+            - name: List environments now present
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                echo "Environments in ${{ github.repository }} after this run:"
+                gh api "repos/${{ github.repository }}/environments" \
+                  --jq '.environments[]?.name' \
+                  || echo "(could not read environments with GITHUB_TOKEN - check Settings -> Environments in the UI instead)"
+
+            - name: Job results
+              run: |
+                echo "named-via-reusable . ${{ needs.named-via-reusable.result }}"
+                echo "named-direct ....... ${{ needs.named-direct.result }}"
+                echo "empty-via-reusable . ${{ needs.empty-via-reusable.result }}"

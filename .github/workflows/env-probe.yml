@@ -1,0 +1,36 @@
+name: (shared) Environment probe
+
+# Reusable workflow that mirrors the estata shared-workflow shape:
+# an optional `environment` input applied to the job via an expression.
+# Used by env-autocreate-test.yml to prove two things:
+#   1. a named environment that does not exist yet is created on first run
+#   2. an empty environment value is accepted and simply means "no environment"
+
+on:
+    workflow_call:
+        inputs:
+            environment:
+                required: false
+                default: ''
+                type: string
+            label:
+                required: true
+                type: string
+
+jobs:
+    probe:
+        runs-on: ubuntu-24.04
+        environment: ${{ inputs.environment }}
+
+        steps:
+            - name: Report what the job resolved
+              run: |
+                echo "label ............. ${{ inputs.label }}"
+                echo "environment input . '${{ inputs.environment }}'"
+                echo ""
+                echo "If this step runs at all, the environment value above was accepted."
+                echo "An empty value means the job ran with no environment attached."
+                echo ""
+                echo "vars.PROBE_MARKER . '${{ vars.PROBE_MARKER }}'"
+                echo "(only non-empty if a PROBE_MARKER variable exists at repo level,"
+                echo " or on the environment named above)"
